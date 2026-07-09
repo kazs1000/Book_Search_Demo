@@ -15,6 +15,7 @@ dist/
 *.tfplan
 crash.log
 crash.*.log
+backend.dev.hcl
 
 # OS / Editor
 .DS_Store
