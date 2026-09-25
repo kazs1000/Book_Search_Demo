@@ -16,6 +16,7 @@ dist/
 crash.log
 crash.*.log
 backend.dev.hcl
+/terraform/private.auto.tfvars
 
 # OS / Editor
 .DS_Store
