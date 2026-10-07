@@ -14,6 +14,14 @@ locals {
 
   cloudfront_log_retention_days = 30
 
+  alarm_period_seconds       = 300
+  alarm_evaluation_periods   = 1
+  alarm_datapoints_to_alarm  = 1
+  lambda_errors_threshold    = 1
+  lambda_duration_threshold  = 8000
+  lambda_throttles_threshold = 1
+  cloudfront_5xx_threshold   = 5
+
   common_tags = {
     Project     = "book-search"
     Environment = "dev"
@@ -24,6 +32,15 @@ locals {
 
 provider "aws" {
   region = "ap-northeast-1"
+
+  default_tags {
+    tags = local.common_tags
+  }
+}
+
+provider "aws" {
+  alias  = "us_east_1"
+  region = "us-east-1"
 
   default_tags {
     tags = local.common_tags
@@ -84,6 +101,104 @@ resource "aws_s3_bucket_lifecycle_configuration" "cloudfront_logs" {
       days = local.cloudfront_log_retention_days
     }
   }
+}
+
+resource "aws_cloudwatch_log_delivery_source" "cloudfront" {
+  provider = aws.us_east_1
+
+  name         = "book-search-dev-cloudfront"
+  log_type     = "ACCESS_LOGS"
+  resource_arn = aws_cloudfront_distribution.frontend.arn
+}
+
+resource "aws_cloudwatch_log_delivery_destination" "cloudfront_s3" {
+  provider = aws.us_east_1
+
+  name          = "book-search-dev-cloudfront-s3"
+  output_format = "json"
+  delivery_destination_configuration {
+    destination_resource_arn = aws_s3_bucket.cloudfront_logs.arn
+  }
+}
+
+data "aws_iam_policy_document" "cloudfront_logs" {
+  statement {
+    sid     = "AllowLogDeliveryGetBucketAcl"
+    effect  = "Allow"
+    actions = ["s3:GetBucketAcl"]
+
+    resources = [aws_s3_bucket.cloudfront_logs.arn]
+
+
+    principals {
+      type        = "Service"
+      identifiers = ["delivery.logs.amazonaws.com"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [data.aws_caller_identity.current.account_id]
+    }
+
+    condition {
+      test     = "ArnEquals"
+      variable = "aws:SourceArn"
+      values   = [aws_cloudwatch_log_delivery_source.cloudfront.arn]
+    }
+
+  }
+
+  statement {
+    sid     = "AllowLogDeliveryPutObject"
+    effect  = "Allow"
+    actions = ["s3:PutObject"]
+
+    resources = ["${aws_s3_bucket.cloudfront_logs.arn}/AWSLogs/${data.aws_caller_identity.current.account_id}/CloudFront/*"]
+
+    principals {
+      type        = "Service"
+      identifiers = ["delivery.logs.amazonaws.com"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [data.aws_caller_identity.current.account_id]
+    }
+
+    condition {
+      test     = "ArnEquals"
+      variable = "aws:SourceArn"
+      values   = [aws_cloudwatch_log_delivery_source.cloudfront.arn]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "s3:x-amz-acl"
+      values   = ["bucket-owner-full-control"]
+    }
+
+  }
+
+}
+
+resource "aws_s3_bucket_policy" "cloudfront_logs" {
+  bucket = aws_s3_bucket.cloudfront_logs.id
+  policy = data.aws_iam_policy_document.cloudfront_logs.json
+}
+
+resource "aws_cloudwatch_log_delivery" "cloudfront_s3" {
+  provider = aws.us_east_1
+
+  delivery_source_name     = aws_cloudwatch_log_delivery_source.cloudfront.name
+  delivery_destination_arn = aws_cloudwatch_log_delivery_destination.cloudfront_s3.arn
+
+  depends_on = [
+    aws_s3_bucket_policy.cloudfront_logs,
+    aws_s3_bucket_public_access_block.cloudfront_logs,
+    aws_s3_bucket_server_side_encryption_configuration.cloudfront_logs
+  ]
 }
 
 resource "aws_cloudfront_origin_access_control" "frontend" {
@@ -357,4 +472,124 @@ resource "aws_budgets_budget" "zero_spend" {
     notification_type          = "ACTUAL"
     subscriber_email_addresses = [var.budget_notification_email]
   }
+}
+
+variable "alarm_notification_email" {
+  description = "CloudWatch Alarm通知先メールアドレス"
+  type        = string
+  sensitive   = true
+}
+
+resource "aws_sns_topic" "api_alerts" {
+  name = "book-search-dev-api-alerts"
+}
+
+resource "aws_sns_topic_subscription" "api_alerts_email" {
+  topic_arn = aws_sns_topic.api_alerts.arn
+  protocol  = "email"
+  endpoint  = var.alarm_notification_email
+}
+
+resource "aws_sns_topic" "cloudfront_alerts" {
+  provider = aws.us_east_1
+  name     = "book-search-dev-cloudfront-alerts"
+}
+
+resource "aws_sns_topic_subscription" "cloudfront_alerts_email" {
+  provider  = aws.us_east_1
+  topic_arn = aws_sns_topic.cloudfront_alerts.arn
+  protocol  = "email"
+  endpoint  = var.alarm_notification_email
+}
+
+resource "aws_cloudwatch_metric_alarm" "lambda_errors" {
+  alarm_name        = "book-search-dev-lambda-errors"
+  alarm_description = "Lambdaの実行エラーが5分間に1件以上発生した場合に通知"
+
+  namespace   = "AWS/Lambda"
+  metric_name = "Errors"
+  statistic   = "Sum"
+
+  period              = local.alarm_period_seconds
+  evaluation_periods  = local.alarm_evaluation_periods
+  datapoints_to_alarm = local.alarm_datapoints_to_alarm
+  threshold           = local.lambda_errors_threshold
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    FunctionName = aws_lambda_function.api.function_name
+  }
+
+  alarm_actions = [aws_sns_topic.api_alerts.arn]
+}
+
+resource "aws_cloudwatch_metric_alarm" "lambda_duration" {
+  alarm_name        = "book-search-dev-lambda-duration"
+  alarm_description = "Lambdaの最大実行時間が5分間の集計で8秒以上になった場合に通知"
+
+  namespace   = "AWS/Lambda"
+  metric_name = "Duration"
+  statistic   = "Maximum"
+
+  period              = local.alarm_period_seconds
+  evaluation_periods  = local.alarm_evaluation_periods
+  datapoints_to_alarm = local.alarm_datapoints_to_alarm
+  threshold           = local.lambda_duration_threshold
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    FunctionName = aws_lambda_function.api.function_name
+  }
+
+  alarm_actions = [aws_sns_topic.api_alerts.arn]
+}
+
+
+resource "aws_cloudwatch_metric_alarm" "lambda_throttles" {
+  alarm_name        = "book-search-dev-lambda-throttles"
+  alarm_description = "Lambdaのスロットリングが5分間に1件以上発生した場合に通知"
+
+  namespace   = "AWS/Lambda"
+  metric_name = "Throttles"
+  statistic   = "Sum"
+
+  period              = local.alarm_period_seconds
+  evaluation_periods  = local.alarm_evaluation_periods
+  datapoints_to_alarm = local.alarm_datapoints_to_alarm
+  threshold           = local.lambda_throttles_threshold
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    FunctionName = aws_lambda_function.api.function_name
+  }
+
+  alarm_actions = [aws_sns_topic.api_alerts.arn]
+}
+
+resource "aws_cloudwatch_metric_alarm" "cloudfront_5xx" {
+  provider = aws.us_east_1
+
+  alarm_name        = "book-search-dev-cloudfront-5xx"
+  alarm_description = "CloudFrontの5xxエラー率の平均が5分間の集計で5%以上になった場合に通知"
+
+  namespace   = "AWS/CloudFront"
+  metric_name = "5xxErrorRate"
+  statistic   = "Average"
+
+  period              = local.alarm_period_seconds
+  evaluation_periods  = local.alarm_evaluation_periods
+  datapoints_to_alarm = local.alarm_datapoints_to_alarm
+  threshold           = local.cloudfront_5xx_threshold
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    DistributionId = aws_cloudfront_distribution.frontend.id
+    Region         = "Global"
+  }
+
+  alarm_actions = [aws_sns_topic.cloudfront_alerts.arn]
 }
