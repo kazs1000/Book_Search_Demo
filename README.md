@@ -79,6 +79,21 @@ python3 local_server.py
 
 [http://localhost:3000](http://localhost:3000) を開き、`terraform`、`aws`、`python` などで検索できます。
 
+## Terraform の通知先設定
+
+リポジトリのルートで、設定例をローカル用のファイルにコピーします。
+
+```bash
+cp terraform/private.auto.tfvars.example terraform/private.auto.tfvars
+```
+
+`terraform/private.auto.tfvars` の次の値を、自分の通知先メールアドレスに書き換えてください。
+
+- `budget_notification_email`：AWS Budget の費用通知先
+- `alarm_notification_email`：CloudWatch アラームの通知先
+
+`terraform/` で Terraform を実行すると、`private.auto.tfvars` は自動で読み込まれます。実値を持つこのファイルは `.gitignore` で除外し、設定例の `private.auto.tfvars.example` を Git 管理します。`.example` ファイルは自動では読み込まれません。
+
 ## 現在の制約・今後の予定
 
 - 現在はdev環境のみ。認証やデータの永続化はありません。
