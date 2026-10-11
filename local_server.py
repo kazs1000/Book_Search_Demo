@@ -1,9 +1,3 @@
-"""Local development server for the MVP application.
-
-This server serves static frontend files and forwards local API requests to the
-Lambda handler. It is intended for local verification only.
-"""
-
 from __future__ import annotations
 
 import logging
@@ -24,16 +18,10 @@ HTTP_METHOD_GET = "GET"
 
 
 class LocalRequestHandler(SimpleHTTPRequestHandler):
-    """Serve frontend files and route API requests to the Lambda handler."""
-
     def __init__(self, *args: Any, **kwargs: Any) -> None:
-        """Initialize the request handler with the frontend directory."""
-
         super().__init__(*args, directory=str(FRONTEND_DIR), **kwargs)
 
     def do_GET(self) -> None:
-        """Handle GET requests."""
-
         parsed_url = urlparse(self.path)
 
         if parsed_url.path.startswith("/api/"):
@@ -43,13 +31,6 @@ class LocalRequestHandler(SimpleHTTPRequestHandler):
         super().do_GET()
 
     def handle_api_request(self, path: str, query: str) -> None:
-        """Route a local API request to the Lambda handler.
-
-        Args:
-            path: Request path.
-            query: Raw query string.
-        """
-
         query_params = {
             key: values[0]
             for key, values in parse_qs(query, keep_blank_values=True).items()
@@ -78,8 +59,6 @@ class LocalRequestHandler(SimpleHTTPRequestHandler):
 
 
 def main() -> None:
-    """Start the local development server."""
-
     logging.basicConfig(level=logging.INFO)
     server = ThreadingHTTPServer((HOST, PORT), LocalRequestHandler)
     logger.info("Local server started: http://%s:%s", HOST, PORT)

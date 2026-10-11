@@ -1,5 +1,3 @@
-"""Lambda handler for the dummy book search API."""
-
 from __future__ import annotations
 
 import asyncio
@@ -35,8 +33,6 @@ Scenario = Literal[
 
 
 class SiteResult(TypedDict):
-    """Search result for one dummy bookstore."""
-
     site_id: str
     site_name: str
     status: Literal["success", "error"]
@@ -46,16 +42,6 @@ class SiteResult(TypedDict):
 
 
 def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
-    """Handle Lambda Function URL requests.
-
-    Args:
-        event: Lambda Function URL event.
-        context: Lambda runtime context.
-
-    Returns:
-        API Gateway compatible HTTP response.
-    """
-
     del context
 
     path = event.get("rawPath", "/")
@@ -131,16 +117,6 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
 
 async def search_all_sites(query: str, scenario: str | None) -> list[SiteResult]:
-    """Search all dummy bookstores concurrently.
-
-    Args:
-        query: Normalized search query.
-        scenario: Optional scenario name for manual verification.
-
-    Returns:
-        Search results grouped by site.
-    """
-
     tasks = [
         search_site_with_timeout(
             site_id=BOOK_MARKET_ID,
@@ -171,20 +147,6 @@ async def search_site_with_timeout(
     query: str,
     scenario: str | None,
 ) -> SiteResult:
-    """Search one dummy bookstore with timeout and error handling.
-
-    Args:
-        site_id: Dummy bookstore ID.
-        site_name: Dummy bookstore display name.
-        books: Books owned by the dummy bookstore.
-        delay_seconds: Artificial response delay.
-        query: Normalized search query.
-        scenario: Optional scenario name for manual verification.
-
-    Returns:
-        Site-level search result.
-    """
-
     try:
         results = await asyncio.wait_for(
             search_site(
@@ -228,22 +190,6 @@ async def search_site(
     query: str,
     scenario: str | None,
 ) -> list[Book]:
-    """Search one dummy bookstore.
-
-    Args:
-        site_id: Dummy bookstore ID.
-        books: Books owned by the dummy bookstore.
-        delay_seconds: Artificial response delay.
-        query: Normalized search query.
-        scenario: Optional scenario name for manual verification.
-
-    Returns:
-        Matched books.
-
-    Raises:
-        RuntimeError: Raised when an error scenario is requested.
-    """
-
     if scenario == f"{site_id}_timeout":
         await asyncio.sleep(SITE_TIMEOUT_SECONDS + 1.0)
 
@@ -260,32 +206,12 @@ async def search_site(
 
 
 def normalize_query(value: str | None) -> str:
-    """Normalize user search query.
-
-    Args:
-        value: Raw query value.
-
-    Returns:
-        Trimmed and lower-cased query.
-    """
-
     if value is None:
         return ""
     return value.strip().lower()
 
 
 def build_site_error(site_id: str, site_name: str, message: str) -> SiteResult:
-    """Build a site-level error result.
-
-    Args:
-        site_id: Dummy bookstore ID.
-        site_name: Dummy bookstore display name.
-        message: Error reason.
-
-    Returns:
-        Site-level error result.
-    """
-
     return {
         "site_id": site_id,
         "site_name": site_name,
@@ -297,16 +223,6 @@ def build_site_error(site_id: str, site_name: str, message: str) -> SiteResult:
 
 
 def build_response(status_code: int, body: dict[str, Any]) -> dict[str, Any]:
-    """Build an HTTP response.
-
-    Args:
-        status_code: HTTP status code.
-        body: JSON serializable response body.
-
-    Returns:
-        Lambda Function URL response.
-    """
-
     return {
         "statusCode": status_code,
         "headers": {

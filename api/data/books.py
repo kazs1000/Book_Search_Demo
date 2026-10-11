@@ -1,11 +1,7 @@
-"""Dummy book data for pseudo scraping."""
-
 from typing import TypedDict
 
 
 class Book(TypedDict):
-    """Book item returned by a dummy bookstore."""
-
     id: str
     title: str
     author: str
