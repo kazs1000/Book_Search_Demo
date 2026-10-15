@@ -110,3 +110,26 @@ resource "aws_cloudwatch_metric_alarm" "cloudfront_5xx" {
 
   alarm_actions = [aws_sns_topic.cloudfront_alerts.arn]
 }
+
+
+resource "aws_cloudwatch_metric_alarm" "api_request_count" {
+  alarm_name        = "book-search-dev-api-request-count"
+  alarm_description = "APIリクエスト数が5分間に100件以上になった場合に通知"
+
+  namespace   = "AWS/ApiGateway"
+  metric_name = "Count"
+  statistic   = "Sum"
+
+  period              = local.alarm_period_seconds
+  evaluation_periods  = local.alarm_evaluation_periods
+  datapoints_to_alarm = local.alarm_datapoints_to_alarm
+  threshold           = local.api_request_count_threshold
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    ApiId = aws_apigatewayv2_api.api.id
+  }
+
+  alarm_actions = [aws_sns_topic.api_alerts.arn]
+}

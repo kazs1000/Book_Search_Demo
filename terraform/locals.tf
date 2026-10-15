@@ -11,6 +11,8 @@ locals {
   lambda_duration_threshold  = 8000
   lambda_throttles_threshold = 1
   cloudfront_5xx_threshold   = 5
+  lambda_reserved_concurrent_executions = 5
+  api_request_count_threshold           = 100
 
   common_tags = {
     Project     = "book-search"

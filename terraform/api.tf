@@ -52,6 +52,8 @@ resource "aws_lambda_function" "api" {
   memory_size = 128
   timeout     = 10
 
+  reserved_concurrent_executions = local.lambda_reserved_concurrent_executions
+
   depends_on = [
     aws_cloudwatch_log_group.lambda,
     aws_iam_role_policy.lambda_logs
