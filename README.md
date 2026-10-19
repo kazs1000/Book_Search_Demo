@@ -1,101 +1,66 @@
-# Book Search Demo — 古本検索
+# Book_Search_Demo
 
-AWSとTerraformの学習を目的に作成した、架空の書店2サイトを横断検索するデモアプリです。
-書籍・価格・在庫・商品リンクはダミーで、実在サイトへのスクレイピングは行いません。
+AWSの資格学習で学んだ構成を実際に構築し、Terraformによるインフラ構築・管理への理解を深めるために制作した書籍検索デモです。
 
-デモURL・解説ブログ：公開準備中。
+複数サイトの検索を模擬し、ダミーデータの検索結果をまとめて表示します。実際のスクレイピングは行いません。
 
-## 主な機能
+- [デモアプリ](https://d5qlnf7lo0m3y.cloudfront.net)
+- [解説記事 (Zenn)](https://zenn.dev/kazs1000/articles/c5ba1c0cc00018) — 設定の意味や構築中の学び、検証結果を紹介しています。
 
-- 書名・著者名の検索と、2サイトの結果の統合表示
-- 価格・在庫・サイト名・検索所要時間の表示
-- 並列検索と、エラー・タイムアウト時の部分成功
+## 使用技術
 
-## 構成・使用技術
+![Amazon S3](https://img.shields.io/badge/Amazon%20S3-569A31?style=flat)
+![Amazon CloudFront](https://img.shields.io/badge/Amazon%20CloudFront-8C4FFF?style=flat)
+![Amazon API Gateway HTTP API](https://img.shields.io/badge/Amazon%20API%20Gateway%20HTTP%20API-8C4FFF?style=flat)
+![AWS Lambda](https://img.shields.io/badge/AWS%20Lambda-FF9900?style=flat)
+![AWS IAM](https://img.shields.io/badge/AWS%20IAM-DD344C?style=flat)
+![Amazon CloudWatch](https://img.shields.io/badge/Amazon%20CloudWatch-E7157B?style=flat)
+![Amazon SNS](https://img.shields.io/badge/Amazon%20SNS-E7157B?style=flat)
+![AWS Budgets](https://img.shields.io/badge/AWS%20Budgets-7AA116?style=flat)
+![Terraform](https://img.shields.io/badge/Terraform-844FBA?style=flat&logo=terraform&logoColor=white)
+![HTML](https://img.shields.io/badge/HTML-E34F26?style=flat&logo=html5&logoColor=white)
+![CSS](https://img.shields.io/badge/CSS-663399?style=flat&logo=css&logoColor=white)
+![JavaScript](https://img.shields.io/badge/JavaScript-F7DF1E?style=flat&logo=javascript&logoColor=black)
+![Python 3.12](https://img.shields.io/badge/Python%203.12-3776AB?style=flat&logo=python&logoColor=white)
+
+## 構成
 
 ```mermaid
 flowchart TD
-    subgraph App[アプリ配信]
-        Browser[ブラウザ] -->|HTTPS| CF[CloudFront]
-        CF -->|静的ファイル / OAC| Frontend[S3 / HTML・CSS・JavaScript]
-        CF -->|/api/* / キャッシュ無効| API[API Gateway HTTP API]
-        API --> Lambda[Lambda / Python 3.12]
-        Lambda --> Data[関数内のダミーデータ / 2書店の並列検索]
-    end
-
-    subgraph Observability[ログ・監視・費用管理]
-        CF -. アクセスログv2 .-> AccessLogs[S3 / JSONログ・30日保持]
-        API -. アクセスログ .-> CWLogs[CloudWatch Logs / 14日保持]
-        Lambda -. 実行ログ .-> CWLogs
-        CF -. 5xxエラー率 .-> Alarms[CloudWatchアラーム]
-        Lambda -. エラー・実行時間・スロットリング .-> Alarms
-        Alarms --> SNS[SNS / リージョン別の通知トピック]
-        SNS --> Email[メール通知]
-        Budget[AWS Budgets / 費用監視] --> Email
-    end
-
-    subgraph Management[インフラ管理]
-        TF[Terraform] -. リソース管理 .-> CF
-        TF -. リソース管理 .-> API
-        TF -. リソース管理 .-> Lambda
-        TF -->|State保存| State[S3 / State専用バケット]
-    end
+    Browser["ブラウザ"] -->|HTTPS| CF["CloudFront"]
+    CF -->|"静的ファイル / OAC"| S3["S3：フロントエンド"]
+    CF -->|"/api/*"| API["API Gateway HTTP API"]
+    API --> Lambda["Lambda：模擬検索"]
 ```
 
-実線はリクエスト・通知・State保存、点線はログ・メトリクス・リソース管理の流れです。Terraformは図の配信・監視リソースを管理します。State用S3は別に準備する構成です。
+CloudFrontの同一ドメインから静的ファイルとAPIを配信します。ログ・監視を含む構成の詳細はブログに記載しています。
 
-基本リージョンは東京（`ap-northeast-1`）。CloudFrontのログ配信リソース、アラームとその通知先SNSは `us-east-1` に配置します。
+## 主な実装内容
 
-| 領域 | 使用技術・役割 |
-| --- | --- |
-| フロントエンド | HTML / CSS / JavaScript。S3に配置し、CloudFrontから配信 |
-| API | API Gateway HTTP APIでルーティング・流量制御、Lambdaで検索処理 |
-| 並列検索 | Python 3.12 / asyncio。サイトごとにタイムアウトと例外を処理 |
-| 配信・保護 | CloudFrontのHTTPS・静的キャッシュ・セキュリティヘッダー、OACとIAMによる権限制御 |
-| ログ | CloudWatch LogsにAPI・実行ログ、専用S3にCloudFrontアクセスログ |
-| 監視・費用管理 | CloudWatchアラームからSNSメール通知、AWS Budgetsで費用通知 |
-| インフラ管理 | Terraformで構成をコード化し、S3 backendでStateを管理 |
+- **インフラ管理**：TerraformでAWSリソースを管理し、StateをS3に保存。
+- **アクセス制御**：S3への読み取りをOACとバケットポリシーで対象CloudFrontに許可。API GatewayからのLambda呼び出し許可を対象のステージ・メソッド・パスに限定。
+- **ログ・監視**：CloudFrontのログをS3、API Gateway・LambdaのログをCloudWatch Logsに保存。CloudWatchアラームとSNSでメール通知。
+- **流量・費用管理**：APIのスロットリング、Lambdaの予約済み同時実行数5、AWS Budgetsによる予算通知を設定。
 
-### この構成を選んだ理由
+## ディレクトリ構成
 
-| ポイント | 理由 |
-| --- | --- |
-| CloudFrontで入口を統一 | 静的ファイルとAPIを同一オリジンで利用し、パスごとに転送先を分けるため |
-| 非公開S3とOAC | フロント用ファイルをS3から直接公開せず、CloudFront経由で配信するため |
-| API GatewayとLambda | ルーティング・流量制御・アクセスログと検索処理の役割を分け、API管理を学ぶため |
-| 単一Lambda内の並列検索 | 構成を抑えながら、複数サイトの応答待ちと部分失敗を再現するため |
-| ログ・監視・通知 | アクセス状況を調査し、実行エラー・遅延・配信エラーを検知するため |
-| TerraformとS3 State | インフラをコードで再現し、管理状態を継続して保持するため |
+| パス | 内容 |
+|---|---|
+| `frontend/` | 画面・API呼び出し・検索結果の表示 |
+| `api/` | Lambdaハンドラー・模擬検索・ダミーデータ |
+| `terraform/` | AWSインフラの定義 |
+| `local_server.py` | ローカルでの動作確認用サーバー |
 
-設定値や構築手順の詳細は、公開予定のブログで解説します。
+## ローカルでの実行
 
-## ローカル起動
-
-Python 3.12を用意し、リポジトリのルートで実行します。追加パッケージは不要です。
+Python 3.12を用意し、リポジトリのルートで実行します。追加パッケージやAWS認証は不要です。
 
 ```bash
 python3 local_server.py
 ```
 
-[http://localhost:3000](http://localhost:3000) を開き、`terraform`、`aws`、`python` などで検索できます。
+ブラウザで [http://localhost:3000](http://localhost:3000) を開いてください。
 
-## Terraform の通知先設定
+DockerとVS CodeのDev Containers拡張機能を利用する場合は、リポジトリを開き、`Dev Containers: Reopen in Container` を実行してください。Python 3.12・Terraform・AWS CLIを利用でき、ポート3000を転送します。
 
-リポジトリのルートで、設定例をローカル用のファイルにコピーします。
-
-```bash
-cp terraform/private.auto.tfvars.example terraform/private.auto.tfvars
-```
-
-`terraform/private.auto.tfvars` の次の値を、自分の通知先メールアドレスに書き換えてください。
-
-- `budget_notification_email`：AWS Budget の費用通知先
-- `alarm_notification_email`：CloudWatch アラームの通知先
-
-`terraform/` で Terraform を実行すると、`private.auto.tfvars` は自動で読み込まれます。実値を持つこのファイルは `.gitignore` で除外し、設定例の `private.auto.tfvars.example` を Git 管理します。`.example` ファイルは自動では読み込まれません。
-
-## 現在の制約・今後の予定
-
-- 現在はdev環境のみ。認証やデータの永続化はありません。
-- API Gatewayの既定エンドポイントも有効です。
-- 今後はGitHub Actions / OIDC、Terraformモジュール分割、環境分離、APIキャッシュを検証予定です。
+AWS上のリソースを操作する場合は、コンテナ内でご自身のAWS認証を設定してください。ホストの認証情報は自動でマウントしません。

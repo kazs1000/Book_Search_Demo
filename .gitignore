@@ -22,3 +22,6 @@ backend.dev.hcl
 .DS_Store
 .vscode/
 .idea/
+
+# Personal Dev Container settings
+/.devcontainer/personal/
